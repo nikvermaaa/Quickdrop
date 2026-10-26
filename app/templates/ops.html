@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QuickDrop - Ops Console | Rider Payout Dispute Desk</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        canvas: '#141414',
+                        surface: '#0a0a0a',
+                        card: '#0d0d0d',
+                        cardHover: '#161616',
+                        inputBg: '#121212',
+                        userBubble: '#1c1c1e',
+                        assistantBubble: '#0f0f0f',
+                    },
+                    fontFamily: {
+                        sans: ['Geist', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                        pixel: ['"Press Start 2P"', 'ui-monospace', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts: Geist, JetBrains Mono & Press Start 2P -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-canvas: #141414;
+            --bg-surface: #0a0a0a;
+            --bg-card: #0d0d0d;
+            --bg-card-hover: #161616;
+            --bg-input: #121212;
+            --bg-user-bubble: #1c1c1e;
+            --bg-assistant-bubble: #0f0f0f;
+        }
+
+        body {
+            font-family: 'Geist', sans-serif;
+            background-color: var(--bg-canvas);
+            color: #d4d4d8;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Typography Hierarchy Tokens */
+        .font-page-title {
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.3;
+        }
+        .font-section-header {
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.35;
+        }
+        .font-body-input {
+            font-size: 13.5px;
+            font-weight: 400;
+            line-height: 1.45;
+        }
+        .font-number-card-title {
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        .font-subtitle-pill {
+            font-size: 11px;
+            font-weight: 500;
+            line-height: 1.3;
+        }
+        .font-badge-meta {
+            font-size: 10px;
+            font-weight: 400;
+            line-height: 1.25;
+        }
+        .font-metric-label {
+            font-size: 9px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            line-height: 1.2;
+        }
+
+        /* Custom subtle scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0a0a0a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #27272a;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #3f3f46;
+        }
+    </style>
+</head>
+<body class="bg-[#141414] text-zinc-300 min-h-screen flex flex-col font-sans relative">
+
+    <!-- Animated Pixel Scooter Background Canvas -->
+    <canvas id="bg-canvas" class="fixed inset-0 w-full h-full pointer-events-none z-0" style="image-rendering: pixelated;"></canvas>
+
+    <!-- Top Navbar (Surface #0a0a0a) -->
+    <header class="bg-[#0a0a0a] border-b border-[#1c1c1f] sticky top-0 z-50">
+        <div class="w-full px-5 py-2.5 flex justify-between items-center">
+            <!-- Brand -->
+            <a href="/ops" class="flex items-center group py-0.5">
+                <span class="font-pixel text-[13px] text-zinc-100 tracking-tight group-hover:text-amber-400 transition-colors" style="-webkit-font-smoothing: none;">QuickDrop</span>
+            </a>
+
+            <!-- Content of Image 3: Pending Approvals & Escalations in Top Bar -->
+            <div class="flex items-center space-x-4">
+                <!-- Pending Ops Approvals -->
+                <div class="flex items-center space-x-3 bg-[#0d0d0d] px-3.5 py-1.5 rounded-lg border border-[#1f1f23]">
+                    <div class="flex flex-col">
+                        <span class="font-metric-label text-zinc-400">Pending Ops Approvals</span>
+                        <span class="font-subtitle-pill text-zinc-500">Requires financial authorization</span>
+                    </div>
+                    <span class="text-xl font-bold font-mono text-amber-500 leading-none">{{ approval_count }}</span>
+                </div>
+
+                <!-- Pending Escalations -->
+                <div class="flex items-center space-x-3 bg-[#0d0d0d] px-3.5 py-1.5 rounded-lg border border-[#1f1f23]">
+                    <div class="flex flex-col">
+                        <span class="font-metric-label text-zinc-400">Pending Escalations</span>
+                        <span class="font-subtitle-pill text-zinc-500">Policy exceptions or disputes</span>
+                    </div>
+                    <span class="text-xl font-bold font-mono text-rose-500 leading-none">{{ escalation_count }}</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Dashboard Container -->
+    <main class="w-full px-5 py-5 flex-1 relative z-10">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+
+            <!-- ========================================== -->
+            <!-- LEFTMOST PANEL: RIDER TRACE & AUDIT LOG (col-span-12 lg:col-span-5) -->
+            <!-- ========================================== -->
+            <div class="lg:col-span-5 flex flex-col">
+                <div class="bg-[#0d0d0d] rounded-xl border border-[#1f1f23] shadow-sm p-4 flex flex-col">
+                    <div class="pb-3 border-b border-[#1f1f23] flex flex-wrap justify-between items-center gap-2">
+                        <div>
+                            <h2 class="font-section-header text-zinc-100">Rider Trace & Audit Log</h2>
+                            <p class="font-subtitle-pill text-zinc-500 mt-0.5">Inspect full turn-by-turn agent decision reasoning</p>
+                        </div>
+                        <form method="GET" action="/ops" class="flex items-center space-x-1.5 w-full sm:w-auto">
+                            <input type="text" name="rider_id" value="{{ active_rider_id or '' }}" placeholder="Rider ID (e.g. R003)" class="w-28 sm:w-32 bg-[#121212] border border-[#27272a] focus:border-zinc-500 focus:outline-none rounded-lg px-2.5 py-1 font-body-input font-mono text-zinc-100 placeholder-zinc-600 transition">
+                            <button type="submit" class="font-subtitle-pill px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg transition shadow-sm whitespace-nowrap active:scale-95">
+                                View Trace
+                            </button>
+                        </form>
+                    </div>
+
+                    {% if active_rider_id %}
+                        {% if trace_steps %}
+                        <div class="mt-4">
+                            <div class="font-number-card-title text-zinc-300 mb-3 flex items-center justify-between">
+                                <span>Activity history for <span class="font-mono text-white font-bold">{{ active_rider_id }}</span>:</span>
+                                <span class="font-badge-meta text-zinc-500">{{ trace_steps | length }} events</span>
+                            </div>
+
+                            <!-- Vertical Timeline -->
+                            <div class="relative border-l border-[#27272a] ml-2.5 pl-4 space-y-4">
+                                {% for step in trace_steps %}
+                                <div class="relative group">
+                                    <!-- Timeline Bullet Dot (White) -->
+                                    <div class="absolute -left-[21px] top-1.5 w-2.5 h-2.5 rounded-full bg-white border border-black ring-2 ring-white/20"></div>
+                                    
+                                    <!-- Step Container -->
+                                    <div class="bg-[#0a0a0a] hover:bg-[#161616] p-3 rounded-lg border border-[#1f1f23] transition-colors">
+                                        <div class="flex items-center justify-between gap-2">
+                                            <span class="font-metric-label text-white">
+                                                {{ step.type }} &bull; {{ step.name }}
+                                            </span>
+                                            <span class="font-badge-meta text-zinc-500 font-mono">{{ step.at.strftime('%H:%M:%S') if step.at else '' }}</span>
+                                        </div>
+
+                                        <!-- Incoming Message Bubble (User Chat Bubble #1c1c1e) -->
+                                        {% if step.type == 'message_in' and step.input and step.input.text %}
+                                        <div class="mt-2.5 bg-[#1c1c1e] border border-[#2e2e34] rounded-xl p-2.5 font-body-input text-zinc-200">
+                                            <div class="font-badge-meta text-zinc-500 mb-0.5">Rider WhatsApp Input:</div>
+                                            "{{ step.input.text }}"
+                                        </div>
+                                        {% elif step.input %}
+                                        <div class="mt-2">
+                                            <div class="font-badge-meta text-zinc-500 mb-0.5">Input:</div>
+                                            <pre class="bg-[#121212] p-2 rounded border border-[#1f1f23] font-mono font-badge-meta text-zinc-300 overflow-x-auto">{{ step.input | tojson }}</pre>
+                                        </div>
+                                        {% endif %}
+
+                                        <!-- Output / Reply Bubble (Assistant Chat Bubble #0f0f0f) -->
+                                        {% if step.output %}
+                                        <div class="mt-2">
+                                            {% if step.type == 'reply' %}
+                                                <div class="bg-[#0f0f0f] border border-[#27272a] rounded-xl p-2.5 font-body-input text-zinc-200">
+                                                    <div class="font-badge-meta text-amber-400 mb-0.5">Agent Response:</div>
+                                                    {{ step.output }}
+                                                </div>
+                                            {% else %}
+                                                <div class="font-badge-meta text-zinc-500 mb-0.5">Output:</div>
+                                                {% if step.output is string %}
+                                                    <pre class="bg-[#121212] p-2 rounded border border-[#1f1f23] font-mono font-badge-meta text-zinc-300 overflow-x-auto whitespace-pre-wrap">{{ step.output }}</pre>
+                                                {% else %}
+                                                    <pre class="bg-[#121212] p-2 rounded border border-[#1f1f23] font-mono font-badge-meta text-zinc-300 overflow-x-auto">{{ step.output | tojson }}</pre>
+                                                {% endif %}
+                                            {% endif %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% else %}
+                        <div class="p-8 text-center text-zinc-500">
+                            <div class="font-body-input">No trace logs recorded yet for rider <span class="font-mono text-zinc-300 font-bold">{{ active_rider_id }}</span>.</div>
+                            <p class="font-subtitle-pill text-zinc-600 mt-1">Send a simulated message to start testing.</p>
+                        </div>
+                        {% endif %}
+                    {% else %}
+                    <div class="p-8 text-center text-zinc-500 font-body-input">
+                        Select a Rider ID above or click on any rider from the pending queue to inspect their decision trace.
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- ========================================== -->
+            <!-- RIGHT PANEL: OPERATIONS QUEUE & CHAT (col-span-12 lg:col-span-7) -->
+            <!-- ========================================== -->
+            <div class="lg:col-span-7 flex flex-col gap-5">
+                
+                <!-- 1. Top: Pending Operations Queue -->
+                <div class="bg-[#0d0d0d] rounded-xl border border-[#1f1f23] shadow-sm overflow-hidden flex flex-col">
+                    <!-- Table Header Bar -->
+                    <div class="px-5 py-3.5 border-b border-[#1f1f23] bg-[#0a0a0a] flex justify-between items-center">
+                        <div>
+                            <h2 class="font-section-header text-zinc-100">Pending Operations Queue</h2>
+                            <p class="font-subtitle-pill text-zinc-500 mt-0.5">Disputes exceeding ₹200 auto-pay limit or requiring human intervention</p>
+                        </div>
+                        <span class="font-subtitle-pill bg-[#18181b] border border-[#27272a] text-zinc-300 px-2.5 py-0.5 rounded-full">
+                            {{ pending_items | length }} items waiting
+                        </span>
+                    </div>
+
+                    <!-- Table Container -->
+                    {% if pending_items %}
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left">
+                            <thead class="bg-[#0a0a0a] border-b border-[#1f1f23] text-zinc-400 font-metric-label">
+                                <tr>
+                                    <th class="px-4 py-2.5">Queue ID</th>
+                                    <th class="px-3 py-2.5">Rider</th>
+                                    <th class="px-3 py-2.5">Type</th>
+                                    <th class="px-3 py-2.5">Amount</th>
+                                    <th class="px-4 py-2.5">Reason</th>
+                                    <th class="px-3 py-2.5">Time</th>
+                                    <th class="px-4 py-2.5 text-right">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-[#1c1c1f]">
+                                {% for item in pending_items %}
+                                <tr class="hover:bg-[#161616] transition-colors group">
+                                    <!-- Queue ID -->
+                                    <td class="px-4 py-3 font-mono font-badge-meta text-zinc-400 whitespace-nowrap">
+                                        {{ item.id }}
+                                    </td>
+                                    
+                                    <!-- Rider ID Link (Normal White) -->
+                                    <td class="px-3 py-3 font-mono font-number-card-title text-white">
+                                        <a href="/ops?rider_id={{ item.rider_id }}" class="hover:underline flex items-center space-x-1 text-white hover:text-zinc-300" title="View activity trace for {{ item.rider_id }}">
+                                            <span>{{ item.rider_id }}</span>
+                                        </a>
+                                    </td>
+                                    
+                                    <!-- Type (No Box, Preserved Color) -->
+                                    <td class="px-3 py-3 whitespace-nowrap">
+                                        {% if item.type == 'approval' %}
+                                            <span class="font-subtitle-pill font-medium text-amber-400">
+                                                Approval
+                                            </span>
+                                        {% else %}
+                                            <span class="font-subtitle-pill font-medium text-rose-400">
+                                                Escalation
+                                            </span>
+                                        {% endif %}
+                                    </td>
+                                    
+                                    <!-- Amount -->
+                                    <td class="px-3 py-3 font-mono font-number-card-title text-zinc-100 whitespace-nowrap">
+                                        {% if item.amount %}₹{{ item.amount }}{% else %}—{% endif %}
+                                    </td>
+                                    
+                                    <!-- Reason -->
+                                    <td class="px-4 py-3 font-body-input text-zinc-300 min-w-[200px] leading-snug">
+                                        {{ item.reason }}
+                                    </td>
+                                    
+                                    <!-- Time -->
+                                    <td class="px-3 py-3 font-mono font-badge-meta text-zinc-500 whitespace-nowrap">
+                                        {{ item.created_at.strftime('%Y-%m-%d %H:%M') if item.created_at else '' }}
+                                    </td>
+                                    
+                                    <!-- Actions -->
+                                    <td class="px-4 py-3 text-right whitespace-nowrap space-x-1.5">
+                                        <button onclick="handleAction('{{ item.id }}', 'approve')" class="font-subtitle-pill px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded transition font-medium shadow-sm active:scale-95">
+                                            Approve
+                                        </button>
+                                        <button onclick="handleAction('{{ item.id }}', 'reject')" class="font-subtitle-pill px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded transition font-medium shadow-sm active:scale-95">
+                                            Reject
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <!-- All Clear Empty State -->
+                    <div class="p-12 text-center text-zinc-500">
+                        <svg class="mx-auto h-10 w-10 text-emerald-500/70 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        <div class="font-section-header text-zinc-300">All clear! No items waiting for Ops approval.</div>
+                        <p class="font-subtitle-pill text-zinc-500 mt-1">Autonomous agent is managing small claims within policy.</p>
+                    </div>
+                    {% endif %}
+
+                    <!-- Resolved items preview if present -->
+                    {% if resolved_items %}
+                    <div class="border-t border-[#1f1f23] bg-[#0a0a0a] px-5 py-3 flex justify-between items-center text-zinc-500">
+                        <span class="font-metric-label text-zinc-400">Recently Resolved ({{ resolved_items | length }})</span>
+                        <span class="font-badge-meta text-zinc-500 font-mono">Audit trail intact</span>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- 2. Bottom ("just below that"): Chat Part (Interactive Rider Message Simulator) -->
+                <div class="bg-[#0d0d0d] rounded-xl border border-[#1f1f23] shadow-sm p-4 flex flex-col">
+                    <div class="pb-3 border-b border-[#1f1f23]">
+                        <h2 class="font-section-header text-zinc-100">
+                            Interactive Rider Message Simulator
+                        </h2>
+                        <p class="font-subtitle-pill text-zinc-500 mt-0.5">Test how the agent responds in real-time to custom WhatsApp messages</p>
+                    </div>
+
+                    <!-- Prompt Pills Row -->
+                    <div class="flex flex-wrap gap-1.5 mt-3">
+                        <button type="button" onclick="loadSample('R003', 'Bhai order T926334 ka surge nahi mila, 20 tarikh wala')" class="font-subtitle-pill bg-[#161618] hover:bg-[#202024] hover:text-zinc-100 border border-[#27272a] text-zinc-400 px-2.5 py-1 rounded-full transition">
+                            Sample: Surge
+                        </button>
+                        <button type="button" onclick="loadSample('R005', 'kal maine 13 order kiye par incentive nahi mila')" class="font-subtitle-pill bg-[#161618] hover:bg-[#202024] hover:text-zinc-100 border border-[#27272a] text-zinc-400 px-2.5 py-1 rounded-full transition">
+                            Sample: Incentive
+                        </button>
+                        <button type="button" onclick="loadSample('R008', 'T262030 ka paisa nahi aaya')" class="font-subtitle-pill bg-[#161618] hover:bg-[#202024] hover:text-zinc-100 border border-[#27272a] text-zinc-400 px-2.5 py-1 rounded-full transition">
+                            Sample: Unpaid Order
+                        </button>
+                    </div>
+
+                    <!-- Simulator Inputs -->
+                    <div class="mt-3.5 space-y-3">
+                        <div>
+                            <label class="block font-metric-label text-zinc-400 mb-1">Rider ID</label>
+                            <input type="text" id="simRiderId" value="{{ active_rider_id or 'R003' }}" placeholder="R003" class="w-full bg-[#121212] border border-[#27272a] focus:border-zinc-500 focus:outline-none rounded-lg px-3 py-1.5 font-body-input font-mono text-zinc-100 placeholder-zinc-600 transition">
+                        </div>
+                        <div>
+                            <label class="block font-metric-label text-zinc-400 mb-1">Message Text</label>
+                            <div class="flex space-x-2">
+                                <input type="text" id="simText" placeholder="Type message in Hinglish or English..." class="flex-1 bg-[#121212] border border-[#27272a] focus:border-zinc-500 focus:outline-none rounded-lg px-3 py-1.5 font-body-input text-zinc-100 placeholder-zinc-600 transition">
+                                <button onclick="sendSimulatedMessage()" id="simBtn" class="font-number-card-title px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg shadow-sm transition flex items-center space-x-1 active:scale-95">
+                                    <span>Send</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Live Simulated Chat Bubbles Container -->
+                    <div id="simChatContainer" class="hidden mt-4 pt-3 border-t border-[#1f1f23] space-y-2.5">
+                        <div class="font-metric-label text-zinc-400">Live Simulator Conversation</div>
+                        
+                        <!-- User Chat Bubble (#1c1c1e) -->
+                        <div class="flex flex-col items-end">
+                            <div class="flex items-center space-x-1.5 mb-1 font-badge-meta text-zinc-500">
+                                <span id="simUserRiderTag" class="font-mono text-white font-medium">R003</span>
+                                <span>•</span>
+                                <span id="simUserTime">just now</span>
+                            </div>
+                            <div class="bg-[#1c1c1e] border border-[#2e2e34] rounded-2xl rounded-tr-sm px-3.5 py-2 max-w-[90%] text-zinc-100 font-body-input shadow-sm">
+                                <span id="simUserText">...</span>
+                            </div>
+                        </div>
+
+                        <!-- Assistant Chat Bubble (#0f0f0f) -->
+                        <div class="flex flex-col items-start">
+                            <div class="flex items-center space-x-1.5 mb-1 font-badge-meta text-zinc-500">
+                                <span class="text-amber-400 font-medium">⚡ QuickDrop AI</span>
+                                <span>•</span>
+                                <span>reply</span>
+                            </div>
+                            <div class="bg-[#0f0f0f] border border-[#242428] rounded-2xl rounded-tl-sm px-3.5 py-2 max-w-[95%] text-zinc-200 font-body-input shadow-sm">
+                                <div id="simReplyText" class="whitespace-pre-line">...</div>
+                            </div>
+                        </div>
+
+                        <div id="simStatusText" class="text-center font-badge-meta text-emerald-400 pt-1">
+                            ✓ Trace logs updating for this rider...
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- Interactive Scripts -->
+    <script>
+        function loadSample(riderId, text) {
+            document.getElementById('simRiderId').value = riderId;
+            document.getElementById('simText').value = text;
+        }
+
+        async function sendSimulatedMessage() {
+            const riderId = document.getElementById('simRiderId').value.trim() || 'R003';
+            const text = document.getElementById('simText').value.trim();
+            if (!text) {
+                alert('Please enter a message.');
+                return;
+            }
+            const btn = document.getElementById('simBtn');
+            btn.disabled = true;
+            btn.innerText = 'Sending...';
+
+            try {
+                const res = await fetch('/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        message_id: 'web_sim_' + Date.now(),
+                        rider_id: riderId,
+                        text: text,
+                        received_at: '2026-09-22T09:05:00+05:30'
+                    })
+                });
+                const data = await res.json();
+                
+                // Show rich chat bubble preview
+                const chatContainer = document.getElementById('simChatContainer');
+                const userText = document.getElementById('simUserText');
+                const userTag = document.getElementById('simUserRiderTag');
+                const replyText = document.getElementById('simReplyText');
+
+                userTag.innerText = riderId;
+                userText.innerText = text;
+                replyText.innerText = data.reply || JSON.stringify(data);
+                chatContainer.classList.remove('hidden');
+
+                // Keep the preview message visible for 30 seconds before auto-refreshing the trace
+                let remainingSeconds = 30;
+                const statusDiv = document.getElementById('simStatusText');
+                if (statusDiv) {
+                    statusDiv.innerHTML = `✓ Reply received. Refreshing trace in <span id="countdown" class="font-mono font-medium">${remainingSeconds}s</span>... <a href="/ops?rider_id=${encodeURIComponent(riderId)}" class="underline text-emerald-300 hover:text-white ml-2">View Trace Now &rarr;</a>`;
+                }
+
+                const countdownInterval = setInterval(() => {
+                    remainingSeconds--;
+                    const cd = document.getElementById('countdown');
+                    if (cd) cd.innerText = `${remainingSeconds}s`;
+                    if (remainingSeconds <= 0) {
+                        clearInterval(countdownInterval);
+                        window.location.href = `/ops?rider_id=${encodeURIComponent(riderId)}`;
+                    }
+                }, 1000);
+            } catch (err) {
+                alert('Error sending message: ' + err.message);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Send';
+            }
+        }
+
+        async function handleAction(itemId, action) {
+            if (!confirm(`Are you sure you want to ${action} item ${itemId}?`)) return;
+            try {
+                const res = await fetch(`/ops/${itemId}/${action}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (res.ok) {
+                    window.location.reload();
+                } else {
+                    const data = await res.json();
+                    alert(`Error: ${data.detail || 'Action failed'}`);
+                }
+            } catch (err) {
+                alert(`Network error: ${err.message}`);
+            }
+        }
+
+        // ==========================================
+        // Animated Pixel Scooter Background Canvas
+        // ==========================================
+        (function() {
+            const body = [
+                "....................ggg...",
+                "...................ggL....",
+                "..................GGGG....",
+                "..................GGGD....",
+                "..................GGD.....",
+                "......KKKKKKKK....GGD.....",
+                ".....KKKKKKKKKK...GGD.....",
+                "....GGGGGGGGGGG...GGD.....",
+                "...GGGGGGGGGGGGGGGGGGD....",
+                "...GGDDDDDDGGGGGGGGGDD....",
+                "...DD........DDDDDDDgg....",
+                "....................gg...."
+            ];
+            const wheel = [
+                ".KKKKKK.",
+                "KKggggKK",
+                "KggWWggK",
+                "KgWWWWgK",
+                "KgWWWWgK",
+                "KggWWggK",
+                "KKggggKK",
+                ".KKKKKK."
+            ];
+            const pal = {
+                G: '#303030', D: '#0a0a0a', K: '#0c0c0c', g: '#8d948d',
+                W: '#f2ead0', L: '#6fd0c0', B: '#2f7fb8', Y: '#ffd23f',
+                S: '#e0a577', H: '#2b2b2b', P: '#34518f'
+            };
+            const rider = [
+                "...........HHH...........",
+                "..........HHHS............",
+                "..........HSSS............",
+                "...........YYYY...........",
+                "..........YYYYYY..........",
+                "..........YYYYYYY.........",
+                "..........YYYYYYYSS.......",
+                "..........YYYYYY..SSS.....",
+                "..........YYYYYY..........",
+                "..........YYYYPP..........",
+                "..........PPPPPPP.........",
+                "..........PPPPPPPPP.......",
+                "................PP........",
+                "................PP........",
+                "...............KKK........"
+            ];
+            const cv = document.getElementById('bg-canvas');
+            if (!cv) return;
+            const ctx = cv.getContext('2d');
+            function draw(t) {
+                t = t || 0;
+                const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+                cv.width = r.width * dpr;
+                cv.height = r.height * dpr;
+                ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                const W = r.width, H = r.height;
+                ctx.fillStyle = '#141414';
+                ctx.fillRect(0, 0, W, H);
+
+                // grid
+                const cell = Math.max(16, Math.round(W / 60));
+                ctx.strokeStyle = '#262626';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                for (let x = 0; x <= W; x += cell) {
+                    ctx.moveTo(x + .5, 0);
+                    ctx.lineTo(x + .5, H);
+                }
+                for (let y = 0; y <= H; y += cell) {
+                    ctx.moveTo(0, y + .5);
+                    ctx.lineTo(W, y + .5);
+                }
+                ctx.stroke();
+
+                // scooter, right side
+                const px = Math.max(2, Math.round(W / 230));
+                const sw = 26 * px, sh = 18 * px;
+                const ox = still ? Math.round(W * 0.60) : Math.round((((t * W * 0.00013) % (W + sw * 2)) - sw) / px) * px;
+                const oy = Math.round(H * 0.96 - sh);
+                const gy = oy + sh;
+
+                // ground line
+                const lh = Math.max(1, Math.round(px / 6));
+                ctx.fillStyle = '#8b5a2b';
+                ctx.fillRect(0, gy, W, lh);
+
+                // moving road dashes
+                const step = px * 6, shift = (t * 0.12) % step;
+                ctx.fillStyle = '#5e3d1e';
+                for (let x = -step; x < W + step; x += step) {
+                    ctx.fillRect(Math.round(x - shift), gy + px * 1.5, px * 3, Math.max(2, lh));
+                }
+
+                // speed lines drifting left
+                ctx.fillStyle = '#5e3d1e';
+                [[0, 6, 6, 0], [2, 9, 9, 4], [1, 12, 5, 8]].forEach(([d, dy, l, ph]) => {
+                    const off = ((t * 0.02 + ph) % 14);
+                    ctx.fillRect(Math.round(ox + (-4 - d - off) * px), oy + dy * px, l * px, px);
+                });
+
+                const bob = (Math.floor(t / 160) % 2) * px;
+                const spr = (rows, x0, y0) => rows.forEach((row, j) => [...row].forEach((ch, i) => {
+                    if (pal[ch]) {
+                        ctx.fillStyle = pal[ch];
+                        ctx.fillRect(x0 + i * px, y0 + j * px, px, px);
+                    }
+                }));
+
+                spr(body, ox, oy + bob);
+                spr(rider, ox, oy + bob - 7 * px);
+                spr(wheel, ox + 3 * px, oy + 10 * px);
+                spr(wheel, ox + 17 * px, oy + 10 * px);
+            }
+            const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+            function loop(t) {
+                draw(still ? 0 : t);
+                requestAnimationFrame(loop);
+            }
+            requestAnimationFrame(loop);
+        })();
+    </script>
+</body>
+</html>
