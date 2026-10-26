@@ -1,0 +1,51 @@
+# QuickDrop Rider Dispute Desk
+services:
+  payswift:
+    build: ./payswift
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quickdrop
+      POSTGRES_PASSWORD: quickdrop
+      POSTGRES_DB: quickdrop_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quickdrop -d quickdrop_db"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build: .
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - ./data:/app/data
+    environment:
+      PORT: 8000
+      DATABASE_URL: postgresql+asyncpg://quickdrop:quickdrop@postgres:5432/quickdrop_db
+      PAYSWIFT_BASE_URL: http://payswift:8081
+      LLM_PROVIDER: ${LLM_PROVIDER:-offline}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      payswift:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pgdata:
