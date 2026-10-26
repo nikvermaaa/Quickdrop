@@ -1,0 +1,74 @@
+# ==============================================================================
+# QuickDrop Rider Dispute Desk - .gitignore
+# ==============================================================================
+
+# Environment & Secrets (Never commit credentials)
+.env
+.env.*
+!.env.example
+
+# Python Bytecode & Compilation Caches
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# CRITICAL: Preserve PaySwift sandbox compiled binary (required by assignment)
+!payswift/server.pyc
+
+# Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+.hypothesis/
+
+# Type Checking & Linters
+.mypy_cache/
+.ruff_cache/
+
+# Databases & Local Volume Mounts
+*.sqlite
+*.sqlite3
+*.db
+pgdata/
+postgres_data/
+
+# Logs & Temporary Files
+*.log
+*.pid
+*.seed
+*.bak
+*.tmp
+*.temp
+
+# IDE & Editor Configurations
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Operating System Metadata
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Frontend / Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+
