@@ -9,6 +9,8 @@
 
 # Python Bytecode & Compilation Caches
 __pycache__/
+*.pyc
+*.pyo
 *.py[cod]
 *$py.class
 *.so
