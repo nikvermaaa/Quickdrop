@@ -229,12 +229,16 @@ class AgentOrchestrator:
         message_id: str,
         rider_id: str,
         text: str,
-        received_at: str,
+        received_at: Any,
+        language: str = "hi",
     ) -> str:
-        try:
-            recv_dt = datetime.fromisoformat(received_at.replace("Z", "+00:00"))
-        except Exception:
-            recv_dt = datetime.now(timezone.utc)
+        if isinstance(received_at, datetime):
+            recv_dt = received_at
+        else:
+            try:
+                recv_dt = datetime.fromisoformat(str(received_at).replace("Z", "+00:00"))
+            except Exception:
+                recv_dt = datetime.now(timezone.utc)
 
         ref_date = to_ist_date(recv_dt)
 
