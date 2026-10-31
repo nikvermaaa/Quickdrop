@@ -43,4 +43,8 @@ class Settings(BaseModel):
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
     GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
+    # Telegram Bot Settings
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_SESSION_TIMEOUT_SECONDS: int = int(os.getenv("TELEGRAM_SESSION_TIMEOUT_SECONDS", "240"))
+
 settings = Settings()
