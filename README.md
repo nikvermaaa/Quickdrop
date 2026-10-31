@@ -198,6 +198,20 @@ python chat.py http://localhost:8000
 ```
 Allows you to select any rider (e.g., `R003`, `R027`, `R016`) and converse directly via the webhook interface.
 
+#### Option C: Live Telegram Bot
+The service includes native integration with Telegram for real-time mobile messaging:
+1. Obtain a bot token from [@BotFather](https://t.me/BotFather) on Telegram and add it to `.env`:
+   ```env
+   TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+   TELEGRAM_SESSION_TIMEOUT_SECONDS=240
+   ```
+2. Restart the app (`docker compose up -d`).
+3. Open Telegram and message your bot:
+   - **Language Selection:** Tap `[ 🇬🇧 English ]` or `[ 🇮🇳 हिंदी / Hinglish ]`.
+   - **Phone Verification:** Enter your registered number (e.g., `9800000003` for Imran Khan `R003`). Unregistered numbers are blocked with a registration prompt.
+   - **Personalized Welcome:** The bot confirms your identity (*"Hello Imran Khan! Your Rider ID is R003"*) and opens the dispute session.
+   - **4-Minute Auto-Close:** Background monitor automatically closes the session and sends a notification if idle for 4 minutes.
+
 ### 4. Optional: Connect Live LLM (Gemini / Groq)
 By default, the service runs in `offline` mode (deterministic, zero latency variance, zero external cost). To enable live generative responses:
 1. Create a `.env` file from the provided template:
