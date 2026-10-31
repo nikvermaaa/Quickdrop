@@ -40,6 +40,8 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-1.5-flash}
       GROQ_API_KEY: ${GROQ_API_KEY:-}
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_SESSION_TIMEOUT_SECONDS: ${TELEGRAM_SESSION_TIMEOUT_SECONDS:-240}
     depends_on:
       postgres:
         condition: service_healthy
