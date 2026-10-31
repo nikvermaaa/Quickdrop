@@ -8,7 +8,7 @@
 [![Evals](https://img.shields.io/badge/Evals%20Pass%20Rate-100%25%20(24%2F24)-success.svg)](evals/run.py)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-An automated, audit-compliant conversational AI agent and operations console built for **QuickDrop's ~5,000 delivery riders**. The system autonomously resolves rider payout grievances over WhatsApp, audits historical trips against company policy, disburses valid payouts (up to ₹200/day) through PaySwift, routes policy exceptions to human operators, and provides a real-time web dashboard.
+An automated, audit-compliant conversational AI agent and operations console built for **QuickDrop's ~5,000 delivery riders**. The system autonomously resolves rider payout grievances over Telegram and WhatsApp, audits historical trips against company policy, disburses valid payouts (up to ₹200/day) through PaySwift, routes policy exceptions to human operators, and provides a real-time web dashboard.
 
 ---
 ## Operations Console
@@ -24,13 +24,35 @@ The Operations Console provides real-time visibility into the agent's decisions 
 
 ---
 
+## Telegram Bot Support Experience
+
+QuickDrop riders can interact directly with the dispute agent through Telegram (`QuickDropSupportBot`), featuring interactive bilingual onboarding, phone verification, multi-day date range calculations, and automated ops escalation:
+
+### 1. Bilingual Onboarding & Phone Verification
+Riders start by choosing their preferred language (`English` or `हिंदी / Hinglish`) and verifying their identity via their 10-digit registered phone number (e.g. `9800000001` for Ravi Kumar `R001`):
+
+![Telegram Bot Onboarding & Phone Verification](docs/telegram_onboarding.png)
+
+### 2. Natural Language Date Range & Payout Calculation Breakdown
+The agent understands natural language date range queries (e.g., *"mera 16sep se 20 sep tak ka payment calculation can you explain"*), relative dates (*"kal"*, *"ek din pehle"*, *"do din pehle"*), and duration requests (*"7 din ka hisaab"*). It aggregates completed trips, incentives, and penalties across the range, providing an itemized daily breakdown alongside the payout policy formula:
+
+![Telegram Bot Date Range Calculation](docs/telegram_date_range_calc.png)
+
+### 3. Payout Ledger Auditing & Policy Exception Escalation
+When a rider asks to audit a previous day's earnings (*"mere kal ke paise pure nhi ayye hai"*), the agent audits historical records against company policy. If the rider provides a valid exception reason (e.g., trip cancellation due to an accident during delivery), the agent empathetically acknowledges the situation and automatically routes the penalty waiver to the human Ops team:
+
+![Telegram Bot Audit and Exception Escalation](docs/telegram_audit_escalation.png)
+
+---
+
 ## Table of Contents
 
 - [Overview & Business Context](#overview--business-context)
+- [Operations Console](#operations-console)
+- [Telegram Bot Support Experience](#telegram-bot-support-experience)
 - [System Architecture](#system-architecture)
 - [Agent Design: Code vs. Model Decision Boundaries](#agent-design-code-vs-model-decision-boundaries)
 - [Key Features](#key-features)
-- [Operations Console](#operations-console)
 - [How to Run (Quickstart)](#how-to-run-quickstart)
   - [1. Start Container Stack](#1-start-container-stack)
   - [2. Run Automated Evaluation Suite](#2-run-automated-evaluation-suite)
@@ -61,7 +83,7 @@ Previously, operations executives manually cross-referenced CSV logs and calcula
 ## System Architecture
 
 The service is composed of three containerized services managed via Docker Compose:
-- **`app` (FastAPI):** Houses the agent orchestrator, policy engine, dual LLM provider layer, and the Jinja2 Operations Console.
+- **`app` (FastAPI):** Houses the agent orchestrator, policy engine, dual LLM provider layer, Telegram bot service (`python-telegram-bot`), and the Jinja2 Operations Console.
 - **`postgres` (PostgreSQL 16):** Stores relational rider profiles, historical trip records, daily payout ledger lines, turn-by-turn trace events, and ops queues.
 - **`payswift` (Mock Sandbox):** Simulates the core banking and payout ledger with realistic idempotency checking and latency.
 
@@ -69,7 +91,7 @@ The service is composed of three containerized services managed via Docker Compo
 flowchart TD
     %% Inbound Channels
     subgraph Inbound["1. INBOUND TRAFFIC"]
-        Rider["📱 Rider (WhatsApp Message)"]
+        Rider["📱 Rider (Telegram / WhatsApp)"]
         Eval["🧪 Eval Runner (evals/run.py)"]
         OpsUser["💻 Ops Team (/ops Dashboard)"]
     end
@@ -121,7 +143,7 @@ flowchart TD
     DecisionNode -->|Amount > ₹200 or Exception| OpsQueue -->|Store Item| Postgres
 
     DecisionNode -->|Verified Facts| ConversationalAI
-    ConversationalAI -->|Polite WhatsApp Reply| Rider
+    ConversationalAI -->|Polite WhatsApp / Telegram Reply| Rider
 
     Gateway -.->|Turn-by-Turn Trace| Postgres
 ```
@@ -156,6 +178,12 @@ To prevent financial leakage while maintaining human-like conversational warmth,
    - Built-in latency timeouts (800ms) with automatic fallback to prevent webhook dropouts.
 4. **Comprehensive Ops Management Console:**
    - Web interface at `http://localhost:8000/ops` to review pending items, inspect turn-by-turn trace reasoning, and test live messages.
+5. **Interactive Bilingual Telegram Bot:**
+   - Real-time mobile experience with language selection (`English` / `Hinglish`), 10-digit registered phone number authentication, typing indicators, and session auto-close monitor.
+   - Supports natural grievance resolution, policy exception escalations, and audit explanations directly on Telegram.
+6. **Natural Language Date Range & Relative Offset Understanding:**
+   - Interprets explicit date ranges (*"16 sep se 20 sep tak"*), relative day offsets (*"ek din pehle"*, *"do din pehle"*, *"kal"*), and duration queries (*"7 din ka hisaab"*).
+   - Aggregates trips, penalties, and incentives across the requested window, returning a day-by-day itemized breakdown and formula explanation.
 
 ---
 
@@ -200,16 +228,19 @@ Allows you to select any rider (e.g., `R003`, `R027`, `R016`) and converse direc
 
 #### Option C: Live Telegram Bot
 The service includes native integration with Telegram for real-time mobile messaging:
-1. Obtain a bot token from [@BotFather](https://t.me/BotFather) on Telegram and add it to `.env`:
+1. Obtain a bot token from [@BotFather](https://t.me/BotFather) on Telegram and configure `.env`:
    ```env
    TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
    TELEGRAM_SESSION_TIMEOUT_SECONDS=240
+   TELEGRAM_REFERENCE_DATE=2026-09-21T18:00:00+05:30
    ```
+   *(Note: `TELEGRAM_REFERENCE_DATE` anchors relative expressions like "kal", "ek din pehle", and "7 din" to the historical dataset period ending 21 Sep 2026).*
 2. Restart the app (`docker compose up -d`).
 3. Open Telegram and message your bot:
    - **Language Selection:** Tap `[ 🇬🇧 English ]` or `[ 🇮🇳 हिंदी / Hinglish ]`.
-   - **Phone Verification:** Enter your registered number (e.g., `9800000003` for Imran Khan `R003`). Unregistered numbers are blocked with a registration prompt.
-   - **Personalized Welcome:** The bot confirms your identity (*"Hello Imran Khan! Your Rider ID is R003"*) and opens the dispute session.
+   - **Phone Verification:** Enter your registered number (e.g., `9800000001` for Ravi Kumar `R001` or `9800000003` for Imran Khan `R003`). Unregistered numbers are blocked with a registration prompt.
+   - **Personalized Welcome:** The bot confirms your identity (*"Hello Ravi Kumar! Your Rider ID is R001"*) and opens the dispute session.
+   - **Multi-Day & Range Inquiries:** Ask for full breakdowns across date ranges (*"mera 16 sep se 20 sep tak ka payment calculation can you explain"*), relative dates (*"kal ka hisaab"*, *"ek din pehle"*), or multi-day periods (*"7 din ka hisaab"*).
    - **4-Minute Auto-Close:** Background monitor automatically closes the session and sends a notification if idle for 4 minutes.
 
 ### 4. Optional: Connect Live LLM (Gemini / Groq)
@@ -364,6 +395,8 @@ During evaluation benchmarking, several real-world data discrepancies were ident
    - In messages referencing multiple trip IDs (e.g. `T795007` and `T206956`), the engine audits and aggregates all referenced orders in a single claim.
 5. **Multi-Date Disputes (Auto-Pay + Ops Escalation Split):**
    - For messages raising two distinct issues across two dates (e.g. Sep 20 surge + Sep 21 duplicate penalty), the engine auto-pays the eligible amount for date 1 (₹15) and escalates date 2 (₹10) to Ops approval to comply with the 1 auto-pay/day limit.
+6. **Date Range and Relative Offset Query Parsing:**
+   - Handled dynamic relative timeframes (*"ek din pehle"*, *"do din pehle"*, *"kal"*) and multi-day date ranges (*"16 sep se 20 sep tak"*, *"7 din ka hisaab"*), querying all active records across the requested period and generating per-day itemized breakdowns anchored to reference dates.
 
 ---
 

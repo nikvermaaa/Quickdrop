@@ -29,6 +29,15 @@ logger = logging.getLogger(__name__)
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
+def _make_json_safe(obj: Any) -> Any:
+    if isinstance(obj, (datetime, date)):
+        return obj.isoformat()
+    if isinstance(obj, dict):
+        return {str(k): _make_json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_make_json_safe(v) for v in obj]
+    return obj
+
 class AgentOrchestrator:
     def __init__(self):
         pass
@@ -48,8 +57,8 @@ class AgentOrchestrator:
             at=timestamp or datetime.now(timezone.utc),
             type=step_type,
             name=name,
-            input=input_data,
-            output=output_data,
+            input=_make_json_safe(input_data),
+            output=_make_json_safe(output_data),
         )
         session.add(step)
         await session.flush()
@@ -91,15 +100,27 @@ class AgentOrchestrator:
         return final_reply
 
     async def fetch_payout_summary(
-        self, session: AsyncSession, rider_id: str, target_date: Optional[date] = None
+        self,
+        session: AsyncSession,
+        rider_id: str,
+        target_date: Optional[date] = None,
+        date_range: Optional[Tuple[date, date]] = None,
     ) -> Optional[Dict[str, Any]]:
         norm_r = normalize_rider_id(rider_id)
         query = (
             select(PayoutLine)
             .where(PayoutLine.rider_id.in_([rider_id, norm_r]))
-            .order_by(PayoutLine.payout_date.desc())
+            .order_by(PayoutLine.payout_date.asc())
         )
-        if target_date:
+        if date_range:
+            start_d, end_d = min(date_range), max(date_range)
+            query = query.where(
+                and_(
+                    PayoutLine.payout_date >= start_d,
+                    PayoutLine.payout_date <= end_d,
+                )
+            )
+        elif target_date:
             query = query.where(PayoutLine.payout_date == target_date)
 
         lines_res = await session.execute(query)
@@ -107,28 +128,76 @@ class AgentOrchestrator:
         if not all_lines:
             return None
 
-        effective_date = target_date or all_lines[0].payout_date
-        lines_for_date = [l for l in all_lines if l.payout_date == effective_date]
-        if not lines_for_date:
-            return None
+        if date_range:
+            start_d, end_d = min(date_range), max(date_range)
+            trip_lines = [l for l in all_lines if l.line_type == "trip"]
+            incentive_lines = [l for l in all_lines if l.line_type == "daily_incentive"]
+            penalty_lines = [l for l in all_lines if l.line_type == "cancellation_penalty"]
+            total_amount = sum(l.amount for l in all_lines)
+            trip_fare = sum(l.amount for l in trip_lines)
+            incentive_amount = sum(l.amount for l in incentive_lines)
+            penalties = sum(l.amount for l in penalty_lines)
 
-        total_amount = sum(l.amount for l in lines_for_date)
-        trip_lines = [l for l in lines_for_date if l.line_type == "trip"]
-        trip_count = len(trip_lines)
-        trip_fare = sum(l.amount for l in trip_lines)
-        has_incentive = any(l.line_type == "daily_incentive" for l in lines_for_date)
-        incentive_amount = sum(l.amount for l in lines_for_date if l.line_type == "daily_incentive")
-        penalties = sum(l.amount for l in lines_for_date if l.line_type == "cancellation_penalty")
+            # Build daily breakdown
+            by_date: Dict[date, List[PayoutLine]] = {}
+            for l in all_lines:
+                by_date.setdefault(l.payout_date, []).append(l)
 
-        return {
-            "date": effective_date,
-            "total_amount": total_amount,
-            "trip_count": trip_count,
-            "trip_fare": trip_fare,
-            "has_incentive": has_incentive,
-            "incentive_amount": incentive_amount,
-            "penalties": penalties,
-        }
+            daily_items = []
+            for d in sorted(by_date.keys()):
+                d_lines = by_date[d]
+                d_trips = [l for l in d_lines if l.line_type == "trip"]
+                d_inc = [l for l in d_lines if l.line_type == "daily_incentive"]
+                d_pen = [l for l in d_lines if l.line_type == "cancellation_penalty"]
+                d_total = sum(l.amount for l in d_lines)
+                daily_items.append({
+                    "date": d,
+                    "trip_count": len(d_trips),
+                    "trip_fare": sum(l.amount for l in d_trips),
+                    "has_incentive": bool(d_inc),
+                    "incentive_amount": sum(l.amount for l in d_inc),
+                    "penalties": sum(l.amount for l in d_pen),
+                    "total_amount": d_total,
+                })
+
+            return {
+                "is_range": True,
+                "start_date": start_d,
+                "end_date": end_d,
+                "date": end_d,
+                "active_days_count": len(by_date),
+                "total_amount": total_amount,
+                "trip_count": len(trip_lines),
+                "trip_fare": trip_fare,
+                "has_incentive": bool(incentive_lines),
+                "incentive_amount": incentive_amount,
+                "penalties": penalties,
+                "daily_items": daily_items,
+            }
+        else:
+            effective_date = target_date or all_lines[-1].payout_date
+            lines_for_date = [l for l in all_lines if l.payout_date == effective_date]
+            if not lines_for_date:
+                return None
+
+            total_amount = sum(l.amount for l in lines_for_date)
+            trip_lines = [l for l in lines_for_date if l.line_type == "trip"]
+            trip_count = len(trip_lines)
+            trip_fare = sum(l.amount for l in trip_lines)
+            has_incentive = any(l.line_type == "daily_incentive" for l in lines_for_date)
+            incentive_amount = sum(l.amount for l in lines_for_date if l.line_type == "daily_incentive")
+            penalties = sum(l.amount for l in lines_for_date if l.line_type == "cancellation_penalty")
+
+            return {
+                "is_range": False,
+                "date": effective_date,
+                "total_amount": total_amount,
+                "trip_count": trip_count,
+                "trip_fare": trip_fare,
+                "has_incentive": has_incentive,
+                "incentive_amount": incentive_amount,
+                "penalties": penalties,
+            }
 
     def is_last_payment_query(self, text: str) -> bool:
         lower = text.lower()
@@ -170,6 +239,15 @@ class AgentOrchestrator:
             return True, "penalty"
         return False, ""
 
+    def is_calculation_query(self, text: str) -> bool:
+        lower = text.lower()
+        calc_words = (
+            "calculation", "calculate", "hisaab", "hisab", "breakdown", 
+            "formula", "statement", "kaise bana", "kaise banta", "details",
+            "show calculation", "show me the calculation"
+        )
+        return any(w in lower for w in calc_words)
+
     def parse_entities(self, text: str, ref_date: date) -> Dict[str, Any]:
         """
         Extracts trip IDs, dates, numbers, and complaint categories from text.
@@ -179,11 +257,51 @@ class AgentOrchestrator:
 
         dates = []
         lower = text.lower()
+        date_range = None
+        is_range_query = False
 
-        if "kal" in lower:
-            dates.append(ref_date - timedelta(days=1))
+        num_words = {
+            "ek": 1, "1": 1, "one": 1,
+            "do": 2, "2": 2, "two": 2,
+            "teen": 3, "3": 3, "three": 3,
+            "char": 4, "chaar": 4, "4": 4, "four": 4,
+            "paanch": 5, "panch": 5, "5": 5, "five": 5,
+            "chhe": 6, "che": 6, "6": 6, "six": 6,
+            "saat": 7, "sat": 7, "7": 7, "seven": 7,
+            "aath": 8, "ath": 8, "8": 8, "eight": 8,
+            "nau": 9, "no": 9, "9": 9, "nine": 9,
+            "das": 10, "dus": 10, "10": 10, "ten": 10,
+        }
 
-        # Only match calendar dates when accompanied by date markers
+        # 1. Check relative "N din pehle", "N days ago", "N day back", "N days before"
+        # e.g., "ek din pehle", "do din pehle ka", "2 din pehle", "3 days ago"
+        rel_matches = re.findall(
+            r"\b(ek|do|teen|char|chaar|paanch|panch|chhe|che|saat|sat|aath|nau|das|\d+)\s*(?:din|days?)\s*(?:pehle|phle|before|ago|back|prior)\b",
+            lower,
+        )
+        for m in rel_matches:
+            offset = num_words.get(m) or (int(m) if m.isdigit() else None)
+            if offset and 1 <= offset <= 30:
+                dt = ref_date - timedelta(days=offset)
+                if dt not in dates:
+                    dates.append(dt)
+
+        # 2. Check "kal" (1 day back), "parso" / "parson" (2 days back), "narso" (3 days back)
+        if not rel_matches:
+            if "kal" in lower or "yesterday" in lower:
+                dt = ref_date - timedelta(days=1)
+                if dt not in dates:
+                    dates.append(dt)
+            if "parso" in lower or "parson" in lower or "day before yesterday" in lower:
+                dt = ref_date - timedelta(days=2)
+                if dt not in dates:
+                    dates.append(dt)
+            if "narso" in lower or "narson" in lower:
+                dt = ref_date - timedelta(days=3)
+                if dt not in dates:
+                    dates.append(dt)
+
+        # 3. Check explicit calendar dates
         day_matches = re.findall(
             r"\b(\d{1,2})\s*(?:tarikh|sep|september|sept|ko|wala|wali|th|st|nd|rd)\b|\b(?:sep|sept)\s*(\d{1,2})\b",
             lower,
@@ -198,6 +316,30 @@ class AgentOrchestrator:
                         dates.append(candidate)
             except ValueError:
                 pass
+
+        # 4. Check for date range: "se ... tak", "from ... to", "between", or 2 dates queried
+        has_range_text = any(rm in lower for rm in (" se ", " tak", " to ", "between", "from", "through", " - "))
+        if len(dates) >= 2 and (has_range_text or any(w in lower for w in ("calculation", "hisab", "hisaab", "payment", "payout", "statement"))):
+            s_dates = sorted(dates)
+            date_range = (s_dates[0], s_dates[-1])
+            is_range_query = True
+
+        # 5. Check duration phrases like "7 din ka hisaab", "pichle 7 din", "last 7 days", "hafte ka hisab"
+        if not is_range_query and not rel_matches:
+            dur_match = re.search(
+                r"\b(?:pichle|last|past)?\s*(ek|do|teen|char|chaar|paanch|panch|chhe|che|saat|sat|aath|nau|das|\d+)\s*(?:din|days?)\s*(?:ka\s*hisaab|ka\s*hisab|ka\s*payment|ka\s*payout|statement|summary|calculation)?\b",
+                lower,
+            )
+            if dur_match:
+                m = dur_match.group(1)
+                offset = num_words.get(m) or (int(m) if m.isdigit() else None)
+                if offset and offset > 1:
+                    date_range = (ref_date - timedelta(days=offset), ref_date)
+                    is_range_query = True
+
+            if any(w in lower for w in ("hafta", "hafte", "week", "weekly")) and not date_range:
+                date_range = (ref_date - timedelta(days=7), ref_date)
+                is_range_query = True
 
         has_surge = "surge" in lower
         has_incentive = "incentive" in lower or "12 order" in lower or "12 se zyada" in lower
@@ -214,6 +356,8 @@ class AgentOrchestrator:
         return {
             "trip_ids": trip_ids,
             "dates": dates,
+            "date_range": date_range,
+            "is_range_query": is_range_query,
             "has_surge": has_surge,
             "has_incentive": has_incentive,
             "has_penalty": has_penalty,
@@ -252,7 +396,7 @@ class AgentOrchestrator:
                 "message_id": message_id,
                 "rider_id": rider_id,
                 "text": text,
-                "received_at": received_at,
+                "received_at": recv_dt.isoformat() if isinstance(received_at, (datetime, date)) else str(received_at),
             },
             output_data=None,
             timestamp=recv_dt,
@@ -542,6 +686,128 @@ class AgentOrchestrator:
                 recv_dt=recv_dt,
             )
 
+        # 5.6 Calculation & Fare Breakdown Inquiries
+        if self.is_calculation_query(text) and not any(w in lower_text for w in ("kam", "nahi mila", "nahi aaya", "nhi aaya", "nhi ayye", "galat", "fraud", "kata")):
+            target_d = entities["dates"][0] if entities["dates"] and not entities.get("date_range") else None
+            date_range = entities.get("date_range")
+            summary = await self.fetch_payout_summary(
+                session=session,
+                rider_id=rider_id,
+                target_date=target_d,
+                date_range=date_range,
+            )
+            is_eng = any(w in lower_text for w in ("show", "me", "the", "calculation", "how", "what", "formula", "explain", "from", "between", "range", "can you explain")) and not any(w in lower_text for w in ("kaise", "batao", "bata", "dikhao", "samjhao", "hisaab", "hisab", "pehle", "kal", "din"))
+            
+            if summary:
+                if summary.get("is_range"):
+                    start_str = summary["start_date"].strftime("%d %b")
+                    end_str = summary["end_date"].strftime("%d %b")
+                    pen_amt = abs(summary.get("penalties", 0))
+                    pen_line_en = f"• Cancellation penalties: -₹{pen_amt}\n" if pen_amt else ""
+                    pen_line_hi = f"• Cancellation penalty: -₹{pen_amt}\n" if pen_amt else ""
+                    inc_amt = summary.get("incentive_amount", 0)
+                    inc_line_en = f"• Daily incentive: ₹{inc_amt}\n" if summary.get("has_incentive") else ""
+                    inc_line_hi = f"• Daily incentive: ₹{inc_amt}\n" if summary.get("has_incentive") else ""
+
+                    daily_lines = []
+                    for d_item in summary.get("daily_items", []):
+                        d_dt = d_item["date"].strftime("%d %b")
+                        d_tot = d_item["total_amount"]
+                        d_tc = d_item["trip_count"]
+                        daily_lines.append(f"  - {d_dt}: ₹{d_tot} ({d_tc} trips)")
+                    daily_str = "\n".join(daily_lines)
+
+                    if is_eng:
+                        reply = (
+                            f"Payout calculation from {start_str} to {end_str}:\n"
+                            f"• Total completed trips: {summary['trip_count']} orders (₹{summary['trip_fare']})\n"
+                            f"{pen_line_en}"
+                            f"{inc_line_en}"
+                            f"• Total net payout: ₹{summary['total_amount']}\n\n"
+                            f"Daily summary:\n{daily_str}\n\n"
+                            f"Formula: Each trip pays ₹25 base (first 2 km) + ₹6/km thereafter × surge multiplier. "
+                            f"₹150 daily incentive for 12+ completed trips."
+                        )
+                    else:
+                        reply = (
+                            f"{start_str} se {end_str} tak ka payout hisaab calculation:\n"
+                            f"• Kul completed trips: {summary['trip_count']} orders (₹{summary['trip_fare']})\n"
+                            f"{pen_line_hi}"
+                            f"{inc_line_hi}"
+                            f"• Kul net payout: ₹{summary['total_amount']}\n\n"
+                            f"Din-waari hisaab:\n{daily_str}\n\n"
+                            f"Calculation Formula: Har completed trip par ₹25 base fare (pehle 2 km) + ₹6/km (2 km ke baad) × surge multiplier. "
+                            f"12 ya usse zyada completed trips par ₹150 daily incentive milta hai."
+                        )
+                    notes = f"Payout calculation for range {start_str} to {end_str}: ₹{summary['total_amount']} total across {summary['trip_count']} trips."
+                else:
+                    pen_amt = abs(summary.get("penalties", 0))
+                    pen_line_en = f"• Cancellation penalties: -₹{pen_amt}\n" if pen_amt else ""
+                    pen_line_hi = f"• Cancellation penalty: -₹{pen_amt}\n" if pen_amt else ""
+                    inc_amt = summary.get("incentive_amount", 0)
+                    inc_line_en = f"• Daily incentive (12+ trips): ₹{inc_amt}\n" if summary.get("has_incentive") else ""
+                    inc_line_hi = f"• Daily incentive (12+ trips): ₹{inc_amt}\n" if summary.get("has_incentive") else ""
+
+                    if is_eng:
+                        reply = (
+                            f"Payout calculation for {summary['date'].strftime('%d %b')}:\n"
+                            f"• {summary['trip_count']} completed trips: ₹{summary['trip_fare']}\n"
+                            f"{pen_line_en}"
+                            f"{inc_line_en}"
+                            f"• Total payout credited: ₹{summary['total_amount']}\n\n"
+                            f"Formula: Each trip pays ₹25 base (first 2 km) + ₹6/km thereafter × surge multiplier. "
+                            f"₹150 daily incentive for 12+ completed trips."
+                        )
+                    else:
+                        reply = (
+                            f"{summary['date'].strftime('%d %b')} ka payout hisaab:\n"
+                            f"• {summary['trip_count']} completed trips: ₹{summary['trip_fare']}\n"
+                            f"{pen_line_hi}"
+                            f"{inc_line_hi}"
+                            f"• Total payout: ₹{summary['total_amount']}\n\n"
+                            f"Calculation Formula: Har completed trip par ₹25 base fare (pehle 2 km) + ₹6/km (2 km ke baad) × surge multiplier. "
+                            f"12 ya usse zyada completed trips par ₹150 daily incentive milta hai."
+                        )
+                    notes = f"Payout calculation breakdown for {summary['date']}: ₹{summary['total_amount']} total."
+            else:
+                if is_eng:
+                    reply = (
+                        "QuickDrop Trip Fare Calculation Formula:\n"
+                        "• Base Fare: ₹25 (covers first 2.0 km)\n"
+                        "• Distance Fare: ₹6 per km after the first 2 km\n"
+                        "• Surge Multiplier: Applies to total trip fare (base + distance)\n"
+                        "• Daily Incentive: ₹150 for 12 or more completed trips in a day\n"
+                        "• Cancellation Penalty: ₹10 for rider cancellations (customer cancellations = ₹0)"
+                    )
+                else:
+                    reply = (
+                        "QuickDrop Payout Calculation Formula:\n"
+                        "• Base Fare: ₹25 (pehle 2 km ke liye)\n"
+                        "• Distance Fare: 2 km ke baad ₹6 per km\n"
+                        "• Surge Multiplier: Pure trip fare par lagta hai\n"
+                        "• Daily Incentive: Ek din mein 12 ya usse zyada completed trips par ₹150\n"
+                        "• Cancellation: Rider cancellation par ₹10 penalty (customer cancellation par ₹0)"
+                    )
+                notes = "General payout policy calculation formula provided."
+
+            await self.log_trace(
+                session=session,
+                rider_id=rider_id,
+                step_type="tool_call",
+                name="explain_calculation",
+                input_data={"rider_id": rider_id, "text": text},
+                output_data={"calculation_summary": reply},
+                timestamp=recv_dt,
+            )
+            return await self.log_and_return_reply(
+                session=session,
+                rider_id=rider_id,
+                incoming_text=text,
+                base_reply=reply,
+                context_notes=notes,
+                recv_dt=recv_dt,
+            )
+
         # 6. Specific Trip Check: Does the trip belong to this rider?
         if entities["trip_ids"]:
             for tid in entities["trip_ids"]:
@@ -700,6 +966,43 @@ class AgentOrchestrator:
             if filter_tids:
                 reply = f"Order {filter_tids[0]} ka payout check kiya gaya. Is order pe policy ke anusaar poora payment sahi se credit ho chuka hai."
                 notes = f"Order {filter_tids[0]} audited. Full policy payout was already credited."
+            elif entities.get("date_range"):
+                summary = await self.fetch_payout_summary(session, rider_id, date_range=entities["date_range"])
+                if summary:
+                    start_str = summary["start_date"].strftime("%d %b")
+                    end_str = summary["end_date"].strftime("%d %b")
+                    pen_val = abs(summary.get("penalties", 0))
+                    pen_clause = f" (minus ₹{pen_val} penalty)" if pen_val else ""
+                    reply = (
+                        f"{start_str} se {end_str} tak ka hisaab check kiya gaya: {summary['trip_count']} completed trips ke ₹{summary['trip_fare']}"
+                        f"{pen_clause} milakar total ₹{summary['total_amount']} banta tha, jo poora credit ho chuka hai. Policy ke mutabiq saare payouts sahi calculation ke anusaar kiye gaye hain."
+                    )
+                    notes = f"Audit for {start_str} to {end_str} completed. Full payout credited."
+                else:
+                    reply = "Aapke account ke pichle 7 dino ke records check kiye gaye hain. Policy ke mutabiq saare payouts sahi calculation ke anusaar kiye gaye hain."
+                    notes = "Audit for past 7 days completed. All payouts were paid correctly according to policy."
+            elif filter_ds:
+                target_d = filter_ds[0]
+                summary = await self.fetch_payout_summary(session, rider_id, target_d)
+                if summary:
+                    is_eng = any(w in lower_text for w in ("show", "me", "the", "calculation", "wrong", "full", "yesterday", "check")) and not any(w in lower_text for w in ("kal", "paise", "hisaab", "hisab", "batao", "bata", "sahi", "aaya", "aaye", "nhi", "nahi"))
+                    pen_val = abs(summary.get("penalties", 0))
+                    pen_clause_en = f" less ₹{pen_val} cancellation penalty" if pen_val else ""
+                    pen_clause_hi = f" (minus ₹{pen_val} penalty)" if pen_val else ""
+                    if is_eng:
+                        reply = (
+                            f"Account check for {summary['date'].strftime('%d %b')}: {summary['trip_count']} completed trips (₹{summary['trip_fare']})"
+                            f"{pen_clause_en} totaled ₹{summary['total_amount']}, which was fully paid. All payouts match policy."
+                        )
+                    else:
+                        reply = (
+                            f"{summary['date'].strftime('%d %b')} ka hisaab check kiya gaya: {summary['trip_count']} completed trips ke ₹{summary['trip_fare']}"
+                            f"{pen_clause_hi} milakar total ₹{summary['total_amount']} banta tha, jo poora credit ho chuka hai. Policy ke mutabiq saare payouts sahi calculation ke anusaar kiye gaye hain."
+                        )
+                    notes = f"Audit for {summary['date']} completed. Full payout of ₹{summary['total_amount']} for {summary['trip_count']} trips was credited."
+                else:
+                    reply = "Aapke account ke pichle 7 dino ke records check kiye gaye hain. Policy ke mutabiq saare payouts sahi calculation ke anusaar kiye gaye hain."
+                    notes = "Audit for past 7 days completed. All payouts were paid correctly according to policy."
             else:
                 reply = "Aapke account ke pichle 7 dino ke records check kiye gaye hain. Policy ke mutabiq saare payouts sahi calculation ke anusaar kiye gaye hain."
                 notes = "Audit for past 7 days completed. All payouts were paid correctly according to policy."

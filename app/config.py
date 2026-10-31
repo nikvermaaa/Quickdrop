@@ -46,5 +46,6 @@ class Settings(BaseModel):
     # Telegram Bot Settings
     TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
     TELEGRAM_SESSION_TIMEOUT_SECONDS: int = int(os.getenv("TELEGRAM_SESSION_TIMEOUT_SECONDS", "240"))
+    TELEGRAM_REFERENCE_DATE: str = os.getenv("TELEGRAM_REFERENCE_DATE", "2026-09-21T18:00:00+05:30")
 
 settings = Settings()

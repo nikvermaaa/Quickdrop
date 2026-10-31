@@ -42,6 +42,7 @@ services:
       GROQ_MODEL: ${GROQ_MODEL:-llama-3.1-8b-instant}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TELEGRAM_SESSION_TIMEOUT_SECONDS: ${TELEGRAM_SESSION_TIMEOUT_SECONDS:-240}
+      TELEGRAM_REFERENCE_DATE: ${TELEGRAM_REFERENCE_DATE:-2026-09-21T18:00:00+05:30}
     depends_on:
       postgres:
         condition: service_healthy

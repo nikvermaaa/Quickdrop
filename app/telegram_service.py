@@ -181,12 +181,13 @@ class TelegramService:
                 await db.commit()
 
                 wamid = f"tg_{msg_id}_{uuid.uuid4().hex[:6]}"
+                msg_received_at = settings.TELEGRAM_REFERENCE_DATE if settings.TELEGRAM_REFERENCE_DATE else now_utc.isoformat()
                 reply_text = await agent_orchestrator.handle_message(
                     session=db,
                     message_id=wamid,
                     rider_id=session.rider_id,
                     text=raw_text,
-                    received_at=now_utc,
+                    received_at=msg_received_at,
                     language=session.preferred_language,
                 )
 
