@@ -1,4 +1,5 @@
 import os
+import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 from contextlib import asynccontextmanager
@@ -11,10 +12,11 @@ from sqlalchemy import select, desc, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import init_db, get_db, async_session
-from app.models import ProcessedMessage, TraceStep, OpsItem, Rider
+from app.models import ProcessedMessage, TraceStep, OpsItem, Rider, TelegramDriverSession
 from app.seed import seed_data
 from app.payswift_client import payswift_client
 from app.agent import agent_orchestrator
+from app.telegram_service import telegram_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -23,7 +25,14 @@ async def lifespan(app: FastAPI):
     # Seed data from CSVs
     async with async_session() as session:
         await seed_data(session)
+
+    # Start Telegram background services (long-polling & 4-min inactivity monitor)
+    telegram_service.start_background_tasks(async_session)
+
     yield
+
+    # Gracefully stop Telegram services
+    await telegram_service.stop()
 
 app = FastAPI(
     title="QuickDrop Rider Payout Dispute Desk",
@@ -157,6 +166,27 @@ async def approve_ops_item(item_id: str, db: AsyncSession = Depends(get_db)):
 
     item.status = "approved"
     await db.commit()
+
+    # Outbound Telegram notification if rider has an active chat session
+    if telegram_service.is_configured:
+        tg_session = await db.scalar(
+            select(TelegramDriverSession).where(
+                TelegramDriverSession.rider_id == item.rider_id,
+                TelegramDriverSession.status == "active",
+            )
+        )
+        if tg_session:
+            amount_str = f"₹{item.amount or 0}"
+            if tg_session.preferred_language == "en":
+                notice = f"🎉 <b>Good News!</b> Your dispute claim of {amount_str} has been approved by our Ops team and disbursed via PaySwift."
+            else:
+                notice = f"🎉 <b>Aapka claim approve ho gaya hai!</b> Ops team ne {amount_str} approve karke PaySwift ke dwara bhej diye hain."
+            asyncio.create_task(
+                telegram_service.client.send_message(
+                    chat_id=tg_session.chat_id, text=notice, parse_mode="HTML"
+                )
+            )
+
     return {"status": "approved", "id": item.id, "amount": item.amount}
 
 @app.post("/ops/{item_id}/reject")
