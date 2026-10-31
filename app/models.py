@@ -21,6 +21,7 @@ class Rider(Base):
     name = Column(String(128), nullable=False)
     city = Column(String(64), nullable=False)
     joined_on = Column(Date, nullable=False)
+    phone_number = Column(String(32), index=True, nullable=True)
 
 class Trip(Base):
     __tablename__ = "trips"
@@ -70,4 +71,15 @@ class ProcessedMessage(Base):
     message_id = Column(String(64), primary_key=True, index=True)
     rider_id = Column(String(32), index=True, nullable=False)
     reply = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+class TelegramDriverSession(Base):
+    __tablename__ = "telegram_driver_sessions"
+
+    chat_id = Column(String(64), primary_key=True, index=True)
+    rider_id = Column(String(32), index=True, nullable=False)
+    phone_number = Column(String(32), nullable=False)
+    preferred_language = Column(String(16), default="hi", nullable=False)  # 'en' or 'hi'
+    status = Column(String(32), default="active", nullable=False)  # 'active' or 'closed'
+    last_active_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     created_at = Column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
