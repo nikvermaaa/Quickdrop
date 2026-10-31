@@ -29,16 +29,29 @@ async def seed_data(session: AsyncSession):
                     if rid in seen_riders:
                         continue
                     seen_riders.add(rid)
+                    phone = row.get("phone_number")
+                    if not phone:
+                        num_part = int(rid[1:]) if rid.startswith("R") and rid[1:].isdigit() else 1
+                        phone = f"9800000{num_part:03d}"
                     riders.append(
                         Rider(
                             rider_id=rid,
                             name=row["name"].strip(),
                             city=row["city"].strip(),
                             joined_on=datetime.strptime(row["joined_on"].strip(), "%Y-%m-%d").date(),
+                            phone_number=phone.strip(),
                         )
                     )
                 session.add_all(riders)
                 await session.commit()
+
+    # Ensure existing riders have phone numbers populated
+    riders_without_phone = (await session.scalars(select(Rider).where(Rider.phone_number.is_(None)))).all()
+    if riders_without_phone:
+        for r in riders_without_phone:
+            num_part = int(r.rider_id[1:]) if r.rider_id.startswith("R") and r.rider_id[1:].isdigit() else 1
+            r.phone_number = f"9800000{num_part:03d}"
+        await session.commit()
 
     # 2. Seed trips (if empty) - deduplicating and normalizing distance/rider_id
     trip_count = await session.scalar(select(func.count()).select_from(Trip))
